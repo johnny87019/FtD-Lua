@@ -10,7 +10,6 @@
 --||Written by Wei-Chun                                                                                                 ||
 --========================================================================================================================
 --=====================================Don't change the value in this section=============================================
-
 --Predefined control parameters in FtD
 --local Water = 0
 --local Land = 1
@@ -25,14 +24,6 @@ local NoseDown = 5
 --local Decrease = 7
 local MainPropulsion = 8
 local inGameTickPerSecond = 40	--40 in game ticks for 1 second in real time. Do not change this!
-
---Global variables for previous state
-prevSelfAIMode = nil
-prevTargetId = nil
-mainTargetIndex = highestValueTarget
-targetChangeTick = defaultTargetChangeTick
-IsTicking = false
-evadingTick = defaultEvadingTick
 --========================================================================================================================
 
 --Self mainframe index used for missile warning
@@ -60,7 +51,7 @@ local defaultEvadingTick = 100
 
 --Parameter for recover from maneuver
 local recoverPitchAngle = 30	--Nose down degree
-local recoverAltitude = 1000
+local recoverAltitude = 1100
 local recoverRollTollerance = 15
 local recoverPitchTollerance = 10
 
@@ -69,8 +60,8 @@ local missilePredictThrustTime = 10	--Proximity time in seconds
 local missilePredictImpactTime = 4
 local missileWeaponSlot = 1
 --local flareWeaponSlot = 2
-local indexOfSubConstructWithMissile = 19
-local indexOfMissileControllers = {0, 1, 2}
+local indexOfSubConstructWithMissile = 19	--Fixed index of the subconstruct with missile weapon
+local indexOfMissileControllers = {0, 1, 2}	--Fixed index of the missile controllers
 local missileLaunchDistance = 1800
 
 --targeting parameters
@@ -78,6 +69,17 @@ local highestValueTarget = 0 --Priority is selected by Target priority card
 local targetMaxElevation = 40
 local targetMaxAzimuth = 40
 local defaultTargetChangeTick = inGameTickPerSecond * missilePredictThrustTime	--Translate second to tick
+local fastTargetStandard = 200	--If target speed higher than this value will ignore the firing range limit
+
+--=====================================Don't change the value in this section=============================================
+--Global variables for previous state
+prevSelfAIMode = nil
+prevTargetId = nil
+mainTargetIndex = highestValueTarget
+targetChangeTick = defaultTargetChangeTick
+IsTicking = false	--Use to determine if missile is still flying. Will not chagne to new target if is ticking. Will end when reach defaultTargetChangeTick
+evadingTick = defaultEvadingTick
+--========================================================================================================================
 
 --//////////////Basic calculation functions//////////////
 function RelativeVelocity(vel1, vel2)
@@ -128,6 +130,20 @@ function ChangeMainThrustandDedibladeThrottlebyAIMode(I)
 	end
 end
 
+function FireMissiles(I)
+	local indexOfWeapon = nil
+	--Since we can get fixed index of subconstruct so we use following code to reduce calculation complexity
+	for k, indexOfWeapon in pairs(indexOfMissileControllers) do
+		local weaponInfoOnSub = I:GetWeaponInfoOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon)
+		I:AimWeaponInDirectionOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon, weaponInfoOnSub.CurrentDirection[1], weaponInfoOnSub.CurrentDirection[2], weaponInfoOnSub.CurrentDirection[3], missileWeaponSlot)
+		--Try to fire missiles and start ticking if it is fired.
+		local missileFired = I:FireWeaponOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon, missileWeaponSlot)
+		if(missileFired and targetChangeTick == defaultTargetChangeTick) then
+			IsTicking = true
+		end
+	end
+end
+
 function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 	local numberOfTargets = I:GetNumberOfTargets(mainframeIndex)
 	if(numberOfTargets > 0) then
@@ -136,15 +152,15 @@ function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 			mainTargetIndex = highestValueTarget
 		end
 		targetInfo = I:GetTargetInfo(targetMainframeIndex, mainTargetIndex)
-		if(prevTargetId ~= targetInfo.Id and IsTicking and targetInfo.Valid) then
-			for t = 1, numberOfTargets do
+		if(prevTargetId ~= targetInfo.Id and IsTicking and targetInfo.Valid) then	--If previous target is still tracked by previously fired missiles
+			for t = 1, numberOfTargets do	--Trace back all targets until find the previous target
 				targetInfo = I:GetTargetInfo(targetMainframeIndex, t)
 				if(targetInfo.Id == prevTargetId and targetInfo.Valid) then
 					mainTargetIndex = targetInfo.Priority
 					break
 				end
 			end
-		else
+		else	--If previous target not found(might be dead). Switch to highest value target
 			targetInfo = I:GetTargetInfo(targetMainframeIndex, mainTargetIndex)
 		end
 		--I:LogToHud("ID: "..targetInfo.Id.." mainTargetIndex: "..mainTargetIndex.." Priority:"..targetInfo.Priority.."Tick: "..targetChangeTick)
@@ -152,7 +168,6 @@ function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 			prevTargetId = targetInfo.Id
 			local transceiverIndex = 0
 			local missileIndex = 0
-			local indexOfWeapon = 0
 			local targetPositionInfo = I:GetTargetPositionInfo(targetMainframeIndex, mainTargetIndex)
 			local targetDistance = targetPositionInfo.Range
 			for transceiverIndex = 0,I:GetLuaTransceiverCount() do
@@ -168,28 +183,13 @@ function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 				and targetPositionInfo.Azimuth < targetMaxAzimuth 
 				and targetPositionInfo.Azimuth > targetMaxAzimuth * -1
 				and targetPositionInfo.Elevation < targetMaxElevation
-				and targetPositionInfo.Elevation > targetMaxElevation * -1
-				and targetDistance < missileLaunchDistance) then
-			--Get All weapons on subconstruct and fire the missileWeaponSlot weapons
-			--Since we can get fixed index of Sub so we don't use following code to reduce calculation complexity
-	--			for k, v in pairs(I:GetAllSubConstructs()) do
-	--				for t = 0, I:GetWeaponCountOnSubConstruct(v) do
-	--					local weaponInfoOnSub = I:GetWeaponInfoOnSubConstruct(v, t)
-	--					if(weaponInfoOnSub.Valid) then
-	--						I:AimWeaponInDirectionOnSubConstruct(v, t, weaponInfoOnSub.CurrentDirection[1], weaponInfoOnSub.CurrentDirection[2], weaponInfoOnSub.CurrentDirection[3], missileWeaponSlot)
-	--						I:FireWeaponOnSubConstruct(v, t, 0)
-	--					end
-	--				end
-	--			end
-
-			--Since we can get fixed index of subconstruct so we use following code to reduce calculation complexity
-				for k, indexOfWeapon in pairs(indexOfMissileControllers) do
-					local weaponInfoOnSub = I:GetWeaponInfoOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon)
-					I:AimWeaponInDirectionOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon, weaponInfoOnSub.CurrentDirection[1], weaponInfoOnSub.CurrentDirection[2], weaponInfoOnSub.CurrentDirection[3], missileWeaponSlot)
-					local missileFired = I:FireWeaponOnSubConstruct(indexOfSubConstructWithMissile, indexOfWeapon, missileWeaponSlot)
-					if(missileFired and targetChangeTick == defaultTargetChangeTick) then
-						IsTicking = true
-					end
+				and targetPositionInfo.Elevation > targetMaxElevation * -1) then
+				
+				local targetSpeed = Speed(targetInfo.Velocity)
+				if(targetSpeed >= fastTargetStandard) then	--If target is too fast, ignore missile firing range limit
+					FireMissiles(I)
+				elseif(targetSpeed < fastTargetStandard and targetDistance < missileLaunchDistance) then	--If target is slow, add missile firing range limit to increase accuracy
+					FireMissiles(I)
 				end
 			end
 		end
