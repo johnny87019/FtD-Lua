@@ -1,5 +1,5 @@
 --========================================================================================================================
---||Aerial_Combat_Missile_Evade_Ability v1.02 (A.C.M.E.A.) by Wei-Chun													||
+--||Aerial_Combat_Missile_Evade_Ability v1.03 (A.C.M.E.A.) by Wei-Chun													||
 --||This is the Lua code for Lua control in FtD (From the Depths)                                                       ||
 --||This Lua has following major features                                                                               ||
 --||1. Can control airplane to evade incoming missiles by perform two different maneuvers                               ||
@@ -46,7 +46,7 @@ local dedibladeContinuousFullSpeed = 30
 
 --Parameters for evasive maneuvers
 local missileRangeinSecond = 1.5 --In N seconds missile will collide Self so will try to evade
-local selfVelocityRelateToSelfMissileVelocity = 1.5	--selfVelocityRelateToSelfMissileVelocity = (SelfSpeed + MissileInitialSpeed) / SelfSpeed
+local selfVelocityRelateToSelfMissileVelocity = 1.3	--selfVelocityRelateToSelfMissileVelocity = (SelfSpeed + MissileInitialSpeed) / SelfSpeed
 local defaultEvadingTick = 100
 
 --Parameter for recover from maneuver
@@ -56,7 +56,6 @@ local recoverRollTollerance = 15
 local recoverPitchTollerance = 10
 
 --Parameter for Weapon control
-local missilePredictThrustTime = 10	--Proximity time in seconds
 local missilePredictImpactTime = 4
 local missileWeaponSlot = 1
 --local flareWeaponSlot = 2
@@ -68,8 +67,9 @@ local missileLaunchDistance = 1800
 local highestValueTarget = 0 --Priority is selected by Target priority card
 local targetMaxElevation = 40
 local targetMaxAzimuth = 40
+local missilePredictThrustTime = 10	--Proximity time in seconds
 local defaultTargetChangeTick = inGameTickPerSecond * missilePredictThrustTime	--Translate second to tick
-local fastTargetStandard = 200	--If target speed higher than this value will ignore the firing range limit
+local fastTargetStandard = 250	--If target speed higher than this value will ignore the firing range limit
 
 --=====================================Don't change the value in this section=============================================
 --Global variables for previous state
@@ -193,7 +193,7 @@ function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 			end
 			local targetPositionInfo = I:GetTargetPositionInfo(targetMainframeIndex, mainTargetIndex)
 			--If target relative velocity is high enough to impact Self
-			if(targetDistance / (Speed(RelativeVelocity(targetInfo.Velocity, currentSelfVelocityVector * selfVelocityRelateToSelfMissileVelocity))) < missilePredictImpactTime
+			if(targetDistance / Speed(RelativeVelocity(targetInfo.Velocity, currentSelfVelocityVector * selfVelocityRelateToSelfMissileVelocity)) < missilePredictImpactTime
 				and targetPositionInfo.Azimuth < targetMaxAzimuth 
 				and targetPositionInfo.Azimuth > targetMaxAzimuth * -1
 				and targetPositionInfo.Elevation < targetMaxElevation
@@ -219,7 +219,7 @@ function MissileEvadeDetermine(I, currentSelfPosition, currentSelfVelocityVector
 				--If missile is in N second range
 				if((incomingMissileInfo.Range / Speed(incomingMissileInfo.Velocity - currentSelfVelocityVector)) < missileRangeinSecond	
 					-- and missile is closing to Self (Current missile range is larger than predicted next tick missile range)
-					and incomingMissileInfo.Range > Distance(currentSelfPosition + (currentSelfVelocityVector / inGameTickPerSecond), incomingMissileInfo.Position + (incomingMissileInfo.Velocity / inGameTickPerSecond))) then	
+					and incomingMissileInfo.Range > Distance(currentSelfPosition + currentSelfVelocityVector, incomingMissileInfo.Position + incomingMissileInfo.Velocity)) then	
 						--I:LogToHud("Speed: "..Speed(incomingMissileInfo.Velocity - currentSelfVelocityVector).." Range: "..incomingMissileInfo.Range)
 						return true
 				end
@@ -272,7 +272,7 @@ function Update(I)
 	--I:LogToHud("evadingTick: "..evadingTick)
 	--I:LogToHud("currentSelfPitch: "..currentSelfPitch.."  currentSelfRoll: "..currentSelfRoll.." currentSelfPosition[2]: "..currentSelfPosition[2])
 	LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)	--Missile Guidence
-		if(targetChangeTick <= 0) then
+	if(targetChangeTick <= 0) then
 		IsTicking = false
 		targetChangeTick = defaultTargetChangeTick
 	end
