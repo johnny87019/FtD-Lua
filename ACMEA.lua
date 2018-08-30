@@ -1,5 +1,5 @@
 --========================================================================================================================
---||Aerial_Combat_Missile_Evade_Ability v1.01 (A.C.M.E.A.) by Wei-Chun													||
+--||Aerial_Combat_Missile_Evade_Ability v1.02 (A.C.M.E.A.) by Wei-Chun													||
 --||This is the Lua code for Lua control in FtD (From the Depths)                                                       ||
 --||This Lua has following major features                                                                               ||
 --||1. Can control airplane to evade incoming missiles by perform two different maneuvers                               ||
@@ -91,7 +91,21 @@ function Speed(vel)
 end
 
 function Distance(pos1,pos2)
-	return math.sqrt((pos1[1] - pos2[1])^2 + (pos1[2] - pos2[2])^2 + (pos1[3] - pos2[3])^2)
+	return Speed(pos1 - pos2)
+end
+
+function Normalize(vector)
+    return vector/Speed(vector)
+end
+
+function GetBearings(I, targetLocation, currentSelfPosition)
+	local heading = Normalize(targetLocation - currentSelfPosition)
+    local angle = (math.atan2(heading[1], heading[3]) * 57.296) % 360
+    if(angle == 360 or angle == -360) then 
+		angle = 0
+	end
+    local steer = ((I:GetConstructYaw() - angle + 180) % 360) - 180
+    return steer
 end
 
 function Predict(P1,V1,P2,V2)
