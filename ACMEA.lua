@@ -42,7 +42,7 @@ local targetMainframeIndex = 0
 --local DistanceAbortAtkRun = 1000
 --local AtkRunElapsedTime = 18
 --Dediblade continuous speed parameters
-local dedibladeContinuousFullSpeed = 30
+--local dedibladeContinuousFullSpeed = 30
 
 --Parameters for evasive maneuvers
 local missileRangeinSecond = 1.5 --In N seconds missile will collide Self so will try to evade
@@ -109,19 +109,20 @@ function GetBearings(I, targetLocation, currentSelfPosition)
 end
 
 function Predict(P1,V1,P2,V2)
-   local D = Distance(P1,P2)
-   local S = Speed(V2-V1)
-   local Time =  D/S
-   if(Time>0 and Time < 200) then
-      P2 = P2 + V2 * Time
-   end
-   return P2
+	local D = Distance(P1,P2)
+	local S = Speed(V2-V1)
+	local Time =  D/S
+	if(S > 500) then
+		V2 = V2 * 1.1
+	end
+	P2 = P2 + V2 * Time
+	return P2
 end
---//////////////Basic calculation functions//////////////
+--/////////////////////////////////////////////////////////
 function MainThrustAndDedibladeThrottleControl(I, mainThrustThrottle)
 	I:RequestControl(Air, MainPropulsion, mainThrustThrottle)	--Add Mainpropulsion here to full thrust when controlled by LUA
 	for DedibladeCount = 0,I:GetDedibladeCount() - 1 do
-		I:SetDedibladeSpeedFactor(DedibladeCount, dedibladeContinuousFullSpeed * mainThrustThrottle)
+		I:SetDedibladeInstaSpin(DedibladeCount, mainThrustThrottle)
 	end
 end
 
@@ -130,7 +131,7 @@ function ChangeMainThrustandDedibladeThrottlebyAIMode(I)
 		MainThrustAndDedibladeThrottleControl(I, DedibladeContinuousNoSpeed, 0)
 	else
 		local currentSelfAIMode = I.AIMode
-		if(currentSelfAIMode ~= PrevSelfAIMode) then	--Only adjust the throttle when AI mode is changed
+		if(currentSelfAIMode ~= prevSelfAIMode) then	--Only adjust the throttle when AI mode is changed
 		--Throttle Main thrust to full power in following AI mode
 			if(currentSelfAIMode == "combat" 
 				or currentSelfAIMode == "follow" 
@@ -140,6 +141,7 @@ function ChangeMainThrustandDedibladeThrottlebyAIMode(I)
 			else
 				MainThrustAndDedibladeThrottleControl(I, 0)
 			end
+			prevSelfAIMode = currentSelfAIMode	--Update AI Mode
 		end
 	end
 end
@@ -177,7 +179,6 @@ function LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)
 		else	--If previous target not found(might be dead). Switch to highest value target
 			targetInfo = I:GetTargetInfo(targetMainframeIndex, mainTargetIndex)
 		end
-		--I:LogToHud("ID: "..targetInfo.Id.." mainTargetIndex: "..mainTargetIndex.." Priority:"..targetInfo.Priority.."Tick: "..targetChangeTick)
 		if(targetInfo.Valid) then
 			prevTargetId = targetInfo.Id
 			local transceiverIndex = 0
@@ -241,6 +242,7 @@ end
 function RecoverfromHighAltitude(I)
 	local currentSelfPitch = I:GetConstructPitch()
 	local currentSelfRoll = I:GetConstructRoll()
+	
 	I:TellAiThatWeAreTakingControl()
 	--Pitch control
 	if(currentSelfPitch < recoverPitchAngle - recoverPitchTollerance) then
@@ -269,8 +271,6 @@ function Update(I)
 	if(not IsNeedEvade) then
 		evadingTick = defaultEvadingTick
 	end
-	--I:LogToHud("evadingTick: "..evadingTick)
-	--I:LogToHud("currentSelfPitch: "..currentSelfPitch.."  currentSelfRoll: "..currentSelfRoll.." currentSelfPosition[2]: "..currentSelfPosition[2])
 	LuaMissileGuidence(I, currentSelfPosition, currentSelfVelocityVector)	--Missile Guidence
 	if(targetChangeTick <= 0) then
 		IsTicking = false
@@ -279,5 +279,4 @@ function Update(I)
 	if(IsTicking) then
 		targetChangeTick = targetChangeTick - 1
 	end
-	PrevSelfAIMode = currentSelfAIMode	--Update last frame of AI Mode
 end
